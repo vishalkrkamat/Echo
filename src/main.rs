@@ -4,24 +4,11 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 
-fn handle(mut stream: &TcpStream) -> std::io::Result<()> {
-    loop {
-        let mut buff = [0; 534];
-        match stream.read(&mut buff) {
-            Ok(bytes_read) => {
-                let received_data = String::from_utf8_lossy(&buff[..bytes_read]);
-
-                // Print the received data
-                println!("Received data: {}", received_data);
-            }
-            Err(e) => println!("eroor{}", e),
-        };
-    }
-    Ok(())
-}
-
 fn client() -> std::io::Result<()> {
-    let mut client = TcpStream::connect("127.0.0.1:7878").unwrap();
+    let mut client = TcpStream::connect("127.0.0.1:7878").unwrap_or_else(|err| {
+        println!("Unable to connect to the server{}", err);
+        panic!("connection failed ");
+    });
     let mut buff = [0; 534];
 
     let mut inp = String::new();
@@ -32,17 +19,10 @@ fn client() -> std::io::Result<()> {
         let res = client.write(mes);
         println!("CXIn {:?}", client);
         println!("{:?}", res);
-
-        //        match client.read(&mut buff) {
-        //           Ok(mess) => {
-        //               let message = String::from_utf8_lossy(&mut buff[..mess]);
-        //              println!("data{}", message);
-        //         }
-        //        Err(_e) => println!("error"),
-        //      }
     }
     Ok(())
 }
+
 fn main() -> std::io::Result<()> {
     loop {
         let mut input: String = String::new();
@@ -57,20 +37,27 @@ fn main() -> std::io::Result<()> {
             };
         } else if input == "ded" {
             println!("The server side selected");
-            let _ = serv();
+            match serv() {
+                Ok(_) => println!("started"),
+                Err(_e) => eprintln!("Error connecting"),
+            };
         } else {
             continue;
         }
     }
 }
+
 fn serv() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:7878")?;
+
+    let mut clients: HashMap<String, TcpStream> = HashMap::new();
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                handle_users(&stream, &mut clients);
                 println!("Connection established: {}", stream.peer_addr()?);
                 thread::spawn(move || {
-                    let _ = handle(&stream);
+                    let _ = handle_server(&stream);
                 })
             }
             Err(e) => {
@@ -81,6 +68,29 @@ fn serv() -> std::io::Result<()> {
     }
     Ok(())
 }
-//fn handle_users() {
-//let mut users = HashMap::new();
-//}
+
+fn handle_server(mut stream: &TcpStream) -> std::io::Result<()> {
+    loop {
+        let mut buff = [0; 534];
+        match stream.read(&mut buff) {
+            Ok(0) => {
+                println!("Client removed");
+                break;
+            }
+            Ok(bytes_read) => {
+                let received_data = String::from_utf8_lossy(&buff[..bytes_read]);
+
+                // Print the received data
+                println!("Received data: {}", received_data);
+            }
+            Err(e) => println!("eroor{}", e),
+        };
+    }
+    Ok(())
+}
+
+fn handle_users(stream: &TcpStream, clients: &mut HashMap<String, TcpStream>) {
+    let addr = stream.peer_addr().unwrap().to_string();
+    clients.insert(addr.clone(), stream.try_clone().unwrap());
+    println!("The active clients: {:?}", clients);
+}
