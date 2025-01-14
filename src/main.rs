@@ -51,17 +51,17 @@ fn main() -> std::io::Result<()> {
         println!("Enter the choice to select");
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim().to_string();
-        if input == "yes" {
+        if input == "connect" {
             println!("The client side selected");
             match client() {
                 Ok(_) => println!("Conncections established"),
                 Err(_e) => println!("Error conections to server"),
             };
-        } else if input == "ded" {
+        } else if input == "start" {
             println!("The server side selected");
             match serv() {
                 Ok(_) => println!("started"),
-                Err(_e) => eprintln!("Error connecting"),
+                Err(_e) => eprintln!("Error starting the server"),
             };
         } else {
             continue;
