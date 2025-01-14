@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 fn client() -> std::io::Result<()> {
@@ -9,18 +10,39 @@ fn client() -> std::io::Result<()> {
         println!("Unable to connect to the server{}", err);
         panic!("connection failed ");
     });
-    let mut buff = [0; 534];
+    let mut client_clone = client.try_clone()?;
+
+    //spawn a thread to handle incoming message from the server
+    thread::spawn(move || {
+        let mut buff = [0; 1024];
+        loop {
+            match client_clone.read(&mut buff) {
+                Ok(0) => {
+                    println!("Disconnected");
+                    break;
+                }
+                Ok(byes) => {
+                    let message = String::from_utf8_lossy(&buff[..byes]);
+                    println!("Server: {}", message);
+                }
+                Err(e) => {
+                    println!("error occured{e}");
+                    break;
+                }
+            }
+        }
+    });
 
     let mut inp = String::new();
     loop {
         println!("Enter the message you wanna send: ");
+        inp.clear();
         io::stdin().read_line(&mut inp).unwrap();
         let mes = inp.trim().as_bytes();
         let res = client.write(mes);
         println!("CXIn {:?}", client);
         println!("{:?}", res);
     }
-    Ok(())
 }
 
 fn main() -> std::io::Result<()> {
@@ -50,15 +72,23 @@ fn main() -> std::io::Result<()> {
 fn serv() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:7878")?;
 
-    let mut clients: HashMap<String, TcpStream> = HashMap::new();
+    let clients = Arc::new(Mutex::new(HashMap::new()));
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                handle_users(&stream, &mut clients);
-                println!("Connection established: {}", stream.peer_addr()?);
+                let addr = stream.peer_addr()?.to_string();
+                let clients_clone = Arc::clone(&clients);
+                {
+                    // Add the new client to the hashmap
+                    let mut clients_lock = clients_clone.lock().unwrap();
+                    clients_lock.insert(addr.clone(), stream.try_clone()?);
+                }
+                println!("Connection established: {}", addr);
+
                 thread::spawn(move || {
-                    let _ = handle_server(&stream);
-                })
+                    let _ = handle_server(stream, clients_clone, addr)
+                        .unwrap_or_else(|e| println!("error handling client: {}", e));
+                });
             }
             Err(e) => {
                 println!("Connection failed{}", e);
@@ -69,28 +99,40 @@ fn serv() -> std::io::Result<()> {
     Ok(())
 }
 
-fn handle_server(mut stream: &TcpStream) -> std::io::Result<()> {
+fn handle_server(
+    mut stream: TcpStream,
+    clients: Arc<Mutex<HashMap<String, TcpStream>>>,
+    addr: String,
+) -> std::io::Result<()> {
     loop {
-        let mut buff = [0; 534];
+        let mut buff = [0; 2048];
         match stream.read(&mut buff) {
             Ok(0) => {
-                println!("Client removed");
+                // Remove client from the hashmap
+                let mut clients_lock = clients.lock().unwrap();
+                clients_lock.remove(&addr);
                 break;
             }
             Ok(bytes_read) => {
-                let received_data = String::from_utf8_lossy(&buff[..bytes_read]);
-
-                // Print the received data
-                println!("Received data: {}", received_data);
+                let message = String::from_utf8_lossy(&buff[..bytes_read]);
+                println!("Message from {}: {}", addr, message);
+                let client_lock = clients.lock().unwrap();
+                for (client_addr, mut client_stream) in client_lock.iter() {
+                    if client_addr != &addr {
+                        if let Err(_e) = client_stream.write_all(message.as_bytes()) {
+                            println!("Error sending the message");
+                        }
+                    }
+                }
             }
-            Err(e) => println!("eroor{}", e),
+            Err(e) => {
+                println!("eroor{}", e);
+                // Remove client from the hashmap
+                let mut clients_lock = clients.lock().unwrap();
+                clients_lock.remove(&addr);
+                break;
+            }
         };
     }
     Ok(())
-}
-
-fn handle_users(stream: &TcpStream, clients: &mut HashMap<String, TcpStream>) {
-    let addr = stream.peer_addr().unwrap().to_string();
-    clients.insert(addr.clone(), stream.try_clone().unwrap());
-    println!("The active clients: {:?}", clients);
 }
