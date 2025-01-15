@@ -7,7 +7,7 @@ use std::thread;
 
 fn client() -> std::io::Result<()> {
     let mut client = TcpStream::connect("127.0.0.1:7878").unwrap_or_else(|err| {
-        println!("Unable to connect to the server{}", err);
+        println!("Unable to connect to the server{err}");
         panic!("connection failed ");
     });
     let mut client_clone = client.try_clone()?;
@@ -23,7 +23,7 @@ fn client() -> std::io::Result<()> {
                 }
                 Ok(byes) => {
                     let message = String::from_utf8_lossy(&buff[..byes]);
-                    println!("Server: {}", message);
+                    println!("Server: {message}");
                 }
                 Err(e) => {
                     println!("error occured{e}");
@@ -40,8 +40,7 @@ fn client() -> std::io::Result<()> {
         io::stdin().read_line(&mut inp).unwrap();
         let mes = inp.trim().as_bytes();
         let res = client.write(mes);
-        println!("CXIn {:?}", client);
-        println!("{:?}", res);
+        println!("res {res:?}");
     }
 }
 
@@ -61,7 +60,7 @@ fn main() -> std::io::Result<()> {
             println!("The server side selected");
             match serv() {
                 Ok(_) => println!("started"),
-                Err(_e) => eprintln!("Error starting the server"),
+                Err(_) => eprintln!("Error starting the server"),
             };
         } else {
             continue;
@@ -83,15 +82,15 @@ fn serv() -> std::io::Result<()> {
                     let mut clients_lock = clients_clone.lock().unwrap();
                     clients_lock.insert(addr.clone(), stream.try_clone()?);
                 }
-                println!("Connection established: {}", addr);
+                println!("Connection established: {addr}");
 
                 thread::spawn(move || {
                     let _ = handle_server(stream, clients_clone, addr)
-                        .unwrap_or_else(|e| println!("error handling client: {}", e));
+                        .unwrap_or_else(|e| println!("error handling client: {e}"));
                 });
             }
             Err(e) => {
-                println!("Connection failed{}", e);
+                println!("Connection failed{e}");
                 return Ok(());
             }
         };
@@ -115,18 +114,18 @@ fn handle_server(
             }
             Ok(bytes_read) => {
                 let message = String::from_utf8_lossy(&buff[..bytes_read]);
-                println!("Message from {}: {}", addr, message);
+                println!("Message from {addr}: {message}");
                 let client_lock = clients.lock().unwrap();
                 for (client_addr, mut client_stream) in client_lock.iter() {
                     if client_addr != &addr {
-                        if let Err(_e) = client_stream.write_all(message.as_bytes()) {
+                        if let Err(_) = client_stream.write_all(message.as_bytes()) {
                             println!("Error sending the message");
                         }
                     }
                 }
             }
             Err(e) => {
-                println!("eroor{}", e);
+                println!("eroor{e}");
                 // Remove client from the hashmap
                 let mut clients_lock = clients.lock().unwrap();
                 clients_lock.remove(&addr);

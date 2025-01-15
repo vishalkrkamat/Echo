@@ -3,5 +3,7 @@ name = "Echo"
 version = "0.1.0"
 edition = "2021"
 
+[lints.clippy]
+pedantic = "warn"
 [dependencies]
 tokio = {version = "1.42.0", features = ["full"] }
