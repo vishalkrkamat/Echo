@@ -38,9 +38,14 @@ fn client() -> std::io::Result<()> {
         println!("Enter the message you wanna send: ");
         inp.clear();
         io::stdin().read_line(&mut inp).unwrap();
-        let mes = inp.trim().as_bytes();
-        let res = client.write(mes);
-        println!("res {res:?}");
+        let message = inp.trim();
+        if !message.is_empty() {
+            if let Err(e) = client.write_all(message.as_bytes()) {
+                eprintln!("failed to send message{e}");
+            }
+        } else {
+            eprintln!("Error reading input");
+        }
     }
 }
 
